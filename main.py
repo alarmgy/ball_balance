@@ -84,6 +84,7 @@ def findBall(frame):
             ball[x] = center[x]
             ball[y] = center[y]
 
+
 while True:
 
     # Take each frame
