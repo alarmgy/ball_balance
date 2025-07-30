@@ -22,9 +22,8 @@ def findCenter(frame):
 
     contours, hierarchy = cv.findContours(mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
-    x_avg = 0
-    y_avg = 0
     cnt = 0
+    corners = []
     for i in contours:
         M = cv.moments(i)
         if M['m00'] != 0:
@@ -34,15 +33,33 @@ def findCenter(frame):
             cv.circle(frame, (cx, cy), 7, (0, 0, 255), -1)
             # cv.putText(frame, str(cx) + ", " + str(cy), (cx - 20, cy - 20), cv.FONT_HERSHEY_SIMPLEX, 0.5, (215, 250, 0), 1)
 
-            x_avg += cx;
-            y_avg += cy;
+            corners.append([cx, cy])
+
             cnt += 1
 
     if cnt == 4:
-        x_avg = int(x_avg / 4)
-        y_avg = int(y_avg / 4)
-        center[x] = x_avg
-        center[y] = y_avg
+        for i in range(3):
+            for j in range(i + 1, 4):
+                if (corners[i][x] - 100 > corners[j][x]) or (abs(corners[i][x] - corners[j][x]) < 100 and corners[i][y] - 100 > corners[j][y]):
+                    corners[i], corners[j] = corners[j], corners[i]
+
+        # print(corners)
+
+        A = np.array([
+            [corners[3][x] - corners[0][x], corners[2][x] - corners[1][x]],
+            [corners[3][y] - corners[0][y], corners[2][y] - corners[1][y]]
+        ])
+        b = np.array([
+            corners[2][x] - corners[0][x],
+            corners[2][y] - corners[0][y]
+        ])
+        t = np.linalg.solve(A, b)
+        intersection = (corners[0][x] + t[0] * (corners[3][x] - corners[0][x]),
+                        corners[0][y] + t[0] * (corners[3][y] - corners[0][y]))
+
+        center[x] = int(intersection[x])
+        center[y] = int(intersection[y])
+        # print(str(center[x]) + ", " + str(center[y]))
 
     cv.circle(frame, (center[x], center[y]), 7, (0, 0, 255), -1)
     cv.putText(frame, "Center: " + str(center[x]) + ", " + str(center[y]), (center[x] - 40, center[y] - 20),
