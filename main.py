@@ -1,24 +1,44 @@
 import cv2 as cv
+import math
 import numpy as np
+import time
+import inverse_kinematics as ik
+import visualize as vis
 
+# Constants
 x = 0
 y = 1
 
+max_angle = 10
+
+# Positions
 ball = [-1, -1]
-center = [-1, -1]
+origin = [-1, -1]
 
-cap = cv.VideoCapture(4)
+# PID
+Kp = 0.05
+Kd = 0
+prev_time = time.time()
+prev_error = [0, 0]
 
-def findCenter(frame):
+# Color Ranges
+# Magenta
+lower_color_magenta = np.array([145,100,100])
+upper_color_magenta = np.array([160,255,255])
+
+# Red
+upper_color1 = np.array([180,255,255])
+lower_color1 = np.array([170,120,70])
+upper_color2 = np.array([10,255,255])
+lower_color2 = np.array([0,120,70])
+
+
+def find_center(frame):
     # Convert BGR to HSV
     hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
 
-    # define range of magenta color in HSV
-    lower_color = np.array([145,100,100])
-    upper_color = np.array([160,255,255])
-
     # Threshold the HSV image to get only magenta colors
-    mask = cv.inRange(hsv, lower_color, upper_color)
+    mask = cv.inRange(hsv, lower_color_magenta, upper_color_magenta)
 
     contours, hierarchy = cv.findContours(mask, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
@@ -57,24 +77,19 @@ def findCenter(frame):
         intersection = (corners[0][x] + t[0] * (corners[3][x] - corners[0][x]),
                         corners[0][y] + t[0] * (corners[3][y] - corners[0][y]))
 
-        center[x] = int(intersection[x])
-        center[y] = int(intersection[y])
-        # print(str(center[x]) + ", " + str(center[y]))
+        origin[x] = int(intersection[x])
+        origin[y] = int(intersection[y])
+        # print(str(origin[x]) + ", " + str(origin[y]))
 
-    cv.circle(frame, (center[x], center[y]), 7, (0, 0, 255), -1)
-    cv.putText(frame, "Center: " + str(center[x]) + ", " + str(center[y]), (center[x] - 40, center[y] - 20),
+    cv.circle(frame, (origin[x], origin[y]), 7, (0, 0, 255), -1)
+    cv.putText(frame, "Center: " + str(origin[x]) + ", " + str(origin[y]), (origin[x] - 40, origin[y] - 20),
                cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
 
-def findBall(frame):
+def find_ball(frame):
     # Convert BGR to HSV
     hsv = cv.cvtColor(frame, cv.COLOR_BGR2HSV)
 
-    upper_color1 = np.array([180,255,255])
-    lower_color1 = np.array([170,120,70])
     mask1 = cv.inRange(hsv, lower_color1, upper_color1)
-
-    upper_color2 = np.array([10,255,255])
-    lower_color2 = np.array([0,120,70])
     mask2 = cv.inRange(hsv, lower_color2, upper_color2)
 
     mask = mask1 + mask2
@@ -100,24 +115,77 @@ def findBall(frame):
 
             ball[x] = center[x]
             ball[y] = center[y]
+        else:
+            ball[x] = origin[x]
+            ball[y] = origin[y]
+    else:
+        ball[x] = origin[x]
+        ball[y] = origin[y]
 
+def constrain(val, min_val, max_val):
+    if val < min_val: return min_val
+    if val > max_val: return max_val
+    return val
+
+
+def PD():
+    global prev_time
+
+    error_x = origin[x] - ball[x]
+    error_y = -(origin[y] - ball[y])
+
+    curr_time = time.time()
+    dt = curr_time - prev_time
+    prev_time = time.time()
+
+    de = [error_x - prev_error[x], error_y - prev_error[y]]
+    derivative = [de[x] / dt, de[y] / dt]
+
+    prev_error[x] = error_x
+    prev_error[y] = error_y
+
+    out = [-(error_y * Kp + derivative[y] * Kd), error_x * Kp + derivative[x] * Kd]
+    out[x] = constrain(out[x], -max_angle, max_angle)
+    out[y] = constrain(out[y], -max_angle, max_angle)
+
+    return int(out[x]), int(out[y])
+
+def len_2_pressure(length):
+    return 797192270.26400 * pow(length, 4) + -84918177.62388 * pow(length, 3) + 3165367.07235 * pow(length, 2) + -45766.30128 * length + 147.49474
+
+
+cap = cv.VideoCapture(4)
 
 while True:
 
     # Take each frame
     _, frame = cap.read()
-    frame = cv.flip(frame, 0)
-    frame = cv.flip(frame, 1)
 
+    find_center(frame)
+    find_ball(frame)
 
-    findCenter(frame)
-    findBall(frame)
+    out_x, out_y = PD()
+    # print(out_x, out_y)
 
+    lengths = ik.IK(out_x, out_y, [0.035, 0.035, 0.035])
+    # print(lengths)
+    pressures = []
+    for l in lengths:
+        pressures.append(len_2_pressure(l))
+    # print(pressures)
 
-    cv.imshow('frame',frame)
+    vis.p1 = [0, 0.04, lengths[0]]
+    vis.p2 = [-0.04 * math.cos(math.pi / 6), -0.04 * math.sin(math.pi / 6), lengths[1]]
+    vis.p3 = [0.04 * math.cos(math.pi / 6), -0.04 * math.sin(math.pi / 6), lengths[2]]
+    vis.update()
+
+    #cv.imshow('frame',frame)
 
     k = cv.waitKey(5) & 0xFF
     if k == 27:
         break
 
+cap.release()
 cv.destroyAllWindows()
+# vis.plt.ioff()
+# vis.plt.show()
