@@ -156,6 +156,8 @@ def len_2_pressure(length):
 
 cap = cv.VideoCapture(4)
 
+prev = time.time()
+
 while True:
 
     # Take each frame
@@ -174,16 +176,20 @@ while True:
         pressures.append(len_2_pressure(l))
     # print(pressures)
 
-    vis.p1 = [0, 0.04, lengths[0]]
-    vis.p2 = [-0.04 * math.cos(math.pi / 6), -0.04 * math.sin(math.pi / 6), lengths[1]]
-    vis.p3 = [0.04 * math.cos(math.pi / 6), -0.04 * math.sin(math.pi / 6), lengths[2]]
-    vis.update()
+    p1 = [0, 0.04, lengths[2]]
+    p2 = [-0.04 * math.cos(math.pi / 6), -0.04 * math.sin(math.pi / 6), lengths[0]]
+    p3 = [0.04 * math.cos(math.pi / 6), -0.04 * math.sin(math.pi / 6), lengths[1]]
+    vis.update(p1, p2, p3)
 
     #cv.imshow('frame',frame)
 
     k = cv.waitKey(5) & 0xFF
     if k == 27:
         break
+
+    # curr = time.time()
+    # print("Time: " + str(curr - prev))
+    # prev = curr
 
 cap.release()
 cv.destroyAllWindows()
